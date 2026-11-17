@@ -1,0 +1,8 @@
+version: 2
+
+models:
+  - name: mon_daily_volume
+    description: Daily impressions/clicks per campaign type with trailing-average anomaly and gap flags.
+  - name: mon_campaign_coverage
+    description: Share of impressions without campaign metadata / gender / mapped device.
+    

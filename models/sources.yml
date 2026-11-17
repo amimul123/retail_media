@@ -1,0 +1,37 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      RAW layer written by scripts/load_raw.py. All business columns are VARCHAR; audit columns
+      (_batch_id, _loaded_at, _source_file, _file_hash, _row_number) are added by the loader.
+    schema: raw
+    loaded_at_field: "cast(_loaded_at as timestamp)"
+    tables:
+      - name: online_placements_salesforce
+        description: Manually maintained Google Sheet export of Salesforce online placement flights. Snapshots are appended.
+        freshness:
+          warn_after: {count: 8, period: day}      # sheet is updated weekly by the team
+          error_after: {count: 30, period: day}
+        data_tests:
+          - columns_match_contract:
+              arguments:
+                source_table: online_placements_salesforce
+      - name: teasers_cms
+        description: CMS backend extract of active/future teasers. Deactivated campaigns disappear upstream, so every snapshot is kept.
+        freshness:
+          warn_after: {count: 1, period: day}
+          error_after: {count: 3, period: day}
+        data_tests:
+          - columns_match_contract:
+              arguments:
+                source_table: teasers_cms
+      - name: tracking_events
+        description: GA4 flattened export. Immutable once loaded; reloaded per file (replace_file mode).
+        freshness:
+          warn_after: {count: 1, period: day}
+          error_after: {count: 2, period: day}
+        data_tests:
+          - columns_match_contract:
+              arguments:
+                source_table: tracking_events

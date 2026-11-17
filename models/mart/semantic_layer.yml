@@ -1,0 +1,196 @@
+version: 2
+
+# =====================================================================================================
+# SEMANTIC LAYER (dbt Semantic Layer / MetricFlow) on top of the gold models.
+# =====================================================================================================
+
+semantic_models:
+
+  # ---------------------------------------------------------------- facts (grain: date x campaign x device)
+  - name: campaign_performance
+    label: Campaign performance (daily)
+    description: >
+      Daily campaign performance by device. Grain = event_date x campaign x device (business date,
+      Europe/Berlin). Additive measures only; every ratio KPI is defined as a metric below.
+      Benchmarks exist for online placements only (NULL / not counted for teasers).
+    model: ref('agg_campaign_performance_daily')
+    primary_entity: campaign_performance   # composite grain (date x campaign x device): no single-column primary key
+    defaults:
+      agg_time_dimension: event_date
+
+    entities:
+      - name: campaign
+        type: foreign
+        expr: campaign_key
+        description: "Join key to the campaign dimension (name, id, type, gender)."
+
+    dimensions:
+      - name: event_date
+        type: time
+        type_params:
+          time_granularity: day
+        label: Date
+        description: "Business date (reporting timezone Europe/Berlin) of the impression or click."
+      - name: device
+        type: categorical
+        label: Device
+        description: "Normalised device category: mobile, desktop, tablet, other (unmapped value) or unknown (missing)."
+
+    measures:
+      - name: impressions
+        description: Number of de-duplicated impression events.
+        agg: sum
+        expr: impressions
+      - name: clicks
+        description: Number of de-duplicated click events.
+        agg: sum
+        expr: clicks
+      - name: benchmark_impressions
+        description: >
+          Impressions that fall inside an online-placement flight with a usable benchmark.
+          NULL (not zero) elsewhere, so it is the correct denominator for benchmark CTR.
+        agg: sum
+        expr: benchmark_impressions
+      - name: benchmark_expected_clicks
+        description: "Expected clicks = impressions x benchmark CTR of the flight (online placements only)."
+        agg: sum
+        expr: benchmark_expected_clicks
+      - name: benchmark_matched_clicks
+        description: "Actual clicks on benchmarked impressions only."
+        agg: sum
+        expr: benchmark_matched_clicks
+
+  # ---------------------------------------------------------------- campaign dimension
+  - name: campaign
+    label: Campaign
+    description: >
+      One row per campaign across all campaign types (teaser, online placement, future types).
+    model: ref('dim_campaign')
+
+    entities:
+      - name: campaign
+        type: primary
+        expr: campaign_key
+
+    dimensions:
+      - name: campaign_id
+        type: categorical
+        label: Campaign ID
+        description: "CMS id for teasers. NULL for online placements (the Salesforce sheet has no id, the name is the key)."
+      - name: campaign_name
+        type: categorical
+        label: Campaign name
+        description: Latest known campaign name from source metadata, otherwise the latest name seen in tracking.
+      - name: campaign_type
+        type: categorical
+        label: Campaign type
+        description: "teaser or online_placement (extendable: banners, video)."
+      - name: gender
+        type: categorical
+        label: Gender (campaign target)
+        description: >
+          TARGET gender of the campaign (Female/Male/All), not the viewer's gender - tracking has none.
+          Mixed = flights for several genders; Unknown = not maintained in the source.
+      - name: source_system
+        type: categorical
+        label: Source system
+        description: "cms or salesforce_sheet. NULL when the campaign exists only in tracking."
+      - name: has_source_metadata
+        type: categorical
+        label: Has source metadata
+        description: "false = events exist for a campaign that is missing from CMS/Salesforce (data-quality indicator)."
+      - name: is_currently_listed_in_source
+        type: categorical
+        label: Currently listed in source
+        description: "false = the CMS has deleted the teaser (deactivated) since it was last seen."
+      - name: campaign_start_date
+        type: time
+        type_params:
+          time_granularity: day
+        label: Campaign start date
+      - name: campaign_end_date
+        type: time
+        type_params:
+          time_granularity: day
+        label: Campaign end date
+
+
+metrics:
+
+  # ---------------------------------------------------------------- KPIs requested by Retail Media analysts
+  - name: impressions
+    label: Impressions
+    description: Total campaign views (impression events, de-duplicated).
+    type: simple
+    type_params:
+      measure: impressions
+
+  - name: clicks
+    label: Clicks
+    description: Total campaign clicks (click events, de-duplicated).
+    type: simple
+    type_params:
+      measure: clicks
+
+  - name: ctr
+    label: CTR
+    description: >
+      Click-through rate = clicks / impressions, computed as a ratio of sums at any filter or grain
+      (never an average of daily CTRs). NULL when impressions = 0.
+    type: ratio
+    type_params:
+      numerator: clicks
+      denominator: impressions
+
+  - name: benchmark_ctr
+    label: Benchmark CTR
+    description: >
+      Expected CTR for online placements: sum(expected clicks) / sum(benchmarked impressions), i.e. the
+      impression-weighted benchmark of all flights in scope. NULL for teasers and for impressions outside
+      a flight window. Compare against `ctr_on_benchmarked_impressions` (or use the index).
+    type: ratio
+    type_params:
+      numerator: benchmark_expected_clicks
+      denominator: benchmark_impressions
+
+  # ---------------------------------------------------------------- comparison metrics
+  - name: ctr_on_benchmarked_impressions
+    label: CTR (benchmarked impressions only)
+    description: "Actual CTR restricted to impressions that have a benchmark: the like-for-like comparison with benchmark_ctr."
+    type: ratio
+    type_params:
+      numerator: benchmark_matched_clicks
+      denominator: benchmark_impressions
+
+  - name: ctr_vs_benchmark_index
+    label: CTR vs benchmark (index)
+    description: "ctr_on_benchmarked_impressions / benchmark_ctr. 1.00 = on benchmark, 1.20 = 20 % above expectation."
+    type: derived
+    type_params:
+      expr: ctr_on_benchmarked_impressions / nullif(benchmark_ctr, 0)
+      metrics:
+        - name: ctr_on_benchmarked_impressions
+        - name: benchmark_ctr
+
+  # ---------------------------------------------------------------- building blocks (not for dashboards)
+  - name: benchmark_impressions
+    label: Benchmarked impressions
+    description: "Impressions inside a benchmarked online-placement flight (denominator of benchmark CTR)."
+    type: simple
+    type_params:
+      measure: benchmark_impressions
+
+  - name: benchmark_expected_clicks
+    label: Expected clicks (benchmark)
+    description: Impressions x benchmark CTR.
+    type: simple
+    type_params:
+      measure: benchmark_expected_clicks
+
+  - name: benchmark_matched_clicks
+    label: Clicks on benchmarked impressions
+    description: Actual clicks on impressions that have a benchmark.
+    type: simple
+    type_params:
+      measure: benchmark_matched_clicks
+

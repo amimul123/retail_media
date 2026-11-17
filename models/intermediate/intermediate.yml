@@ -1,0 +1,87 @@
+version: 2
+
+models:
+  - name: int_tracking_events
+    description: Cleaned, de-duplicated impression/click events, incremental by date (reporting timezone).
+    columns:
+      - name: event_id
+        description: Hash of the natural event key; used for de-duplication.
+        data_tests: [unique, not_null]
+      - name: event_date
+        data_tests: [not_null]
+      - name: event_type
+        data_tests:
+          - accepted_values:
+              arguments: {values: ['impression', 'click']}
+      - name: campaign_type
+        description: teaser / online_placement
+        data_tests:
+          - accepted_values:
+              arguments: {values: ['teaser', 'online_placement']}
+              config: {severity: warn}
+      - name: campaign_key
+        data_tests: [not_null]
+      - name: device
+        data_tests: [not_null]
+
+  - name: int_observed_campaigns
+    description: Campaigns seen in tracking with first/last seen dates and latest name.
+    columns:
+      - name: campaign_key
+        data_tests: [unique, not_null]
+
+  - name: int_teasers
+    description: Last known version of each CMS teaser; history survives upstream deletion.
+    columns:
+      - name: campaign_id
+        data_tests: [unique, not_null]
+      - name: gender
+        data_tests:
+          - accepted_values:
+              arguments: {values: ['Female', 'Male', 'Kids','Babys','Unisex', 'All', 'Unknown']}
+
+  - name: int_online_placement_flights
+    description: Clean Salesforce flights with quality flags.
+    columns:
+      - name: flight_key
+        data_tests: [unique, not_null]
+      - name: benchmark_ctr
+        data_tests:
+          - expression_is_true:
+              arguments: {expression: "benchmark_ctr is null or benchmark_ctr between 0 and 1"}
+              config: {severity: warn}
+
+  # ---- conformed contracts: the extension point for new campaign sources --------------------------
+  - name: int_campaigns_teaser
+    config: {contract: {enforced: true}}
+    columns: &campaign_contract
+      - {name: campaign_key,                   data_type: text, data_tests: [unique, not_null]}
+      - {name: campaign_type,                  data_type: text}
+      - {name: source_system,                  data_type: text}
+      - {name: source_campaign_id,             data_type: text}
+      - {name: campaign_name,                  data_type: text}
+      - {name: campaign_name_key,              data_type: text}
+      - {name: gender,                         data_type: text}
+      - {name: campaign_start_date,            data_type: date}
+      - {name: campaign_end_date,              data_type: date}
+      - {name: is_currently_listed_in_source,  data_type: boolean}
+      - {name: has_missing_required_fields,    data_type: boolean}
+
+  - name: int_campaigns_online
+    config: {contract: {enforced: true}}
+    columns: *campaign_contract
+
+  - name: int_benchmarks_online_placements
+    config: {contract: {enforced: true}}
+    columns:
+      - {name: campaign_key,          data_type: text, data_tests: [not_null]}
+      - {name: benchmark_start_date,  data_type: date}
+      - {name: benchmark_end_date,    data_type: date}
+      - {name: benchmark_ctr,         data_type: double precision}
+      - {name: benchmark_weight,      data_type: double precision}
+
+  - name: int_campaigns_unified
+    description: Union of all conformed campaign sources.
+    columns:
+      - name: campaign_key
+        data_tests: [unique, not_null]

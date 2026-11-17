@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: stg_tracking_events
+    description: Typed view over raw.tracking_events.
+    columns:
+      - name: _loaded_at
+        data_tests: [not_null]
+      - name: _source_file
+        data_tests: [not_null]
+
+  - name: stg_teasers_cms
+    description: Typed view over raw.teasers_cms.
+    columns:
+      - name: _loaded_at
+        data_tests: [not_null]
+
+  - name: stg_online_placements_salesforce
+    description: Typed view over the manual Salesforce sheet export. benchmark_ctr stays text until silver.
+    columns:
+      - name: _loaded_at
+        data_tests: [not_null]
