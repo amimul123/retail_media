@@ -1,0 +1,45 @@
+name: retail_media
+
+x-dbt-env: &dbt-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: ${POSTGRES_USER:-retail}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-retail}
+  POSTGRES_DB: ${POSTGRES_DB:-retail_media}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-retail}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-retail}
+      POSTGRES_DB: ${POSTGRES_DB:-retail_media}
+      TZ: UTC
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Python loader + dbt in one image. Usage:
+  #   docker compose run --rm pipeline                      -> full run (load RAW + dbt build + freshness)
+  #   docker compose run --rm pipeline dbt build            -> any dbt command
+  #   docker compose run --rm pipeline python scripts/load_raw.py --force
+  pipeline:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *dbt-env
+    volumes:
+      - .:/app            # project files; dbt target/ and logs/ go to /tmp inside the container
+    working_dir: /app
+
+volumes:
+  pgdata:

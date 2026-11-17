@@ -1,0 +1,63 @@
+name: retail_media
+version: "1.0.0"
+config-version: 2
+profile: retail_media
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+
+clean-targets: ["target", "dbt_packages"]
+
+#on-run-start:
+#  - "{{ create_safe_functions() }}"   # util.try_* helpers (Postgres has no TRY_CAST)
+
+vars:
+  # ---- time handling -------------------------------------------------------
+  tracking_timezone: "UTC"            
+  reporting_timezone: "Europe/Berlin"
+
+  # ---- incremental / backfill ---------------------------------------------
+  min_event_date: "2025-06-01"       
+  lookback_days: 3                   
+  reprocess_start_date: null          # backfill: dbt build --vars '{reprocess_start_date: 2025-06-01, reprocess_end_date: 2025-06-07}'
+  reprocess_end_date: null
+
+  # ---- business rules ------------------------------------------------------
+  valid_event_types: ["impression", "click"]
+  natural_key_strategy:
+    teaser: id
+    online_placement: name
+
+  campaign_source_models: ["int_campaigns_online", "int_campaigns_teaser"]
+  benchmark_click_tolerance: 0.05     # |benchmark_clicks - reach*benchmark_ctr| relative tolerance
+
+  # ---- monitoring thresholds ----------------------------------------------
+  volume_anomaly_threshold: 0.5       # +/-50% vs trailing 7-day average
+  volume_min_history_days: 3
+
+models:
+  retail_media:
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: table
+      +schema: intermediate
+    mart:
+      +materialized: table
+      +schema: mart
+    monitoring:
+      +materialized: table
+      +schema: monitoring
+
+seeds:
+  retail_media:
+    +schema: reference
+
+data_tests:
+  retail_media:
+    +store_failures: true
+    +schema: dq_failures

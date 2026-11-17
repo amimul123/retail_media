@@ -1,0 +1,13 @@
+retail_media:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | as_number }}"
+      user: "{{ env_var('POSTGRES_USER', 'retail') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'retail') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'retail_media') }}"
+      schema: public
+      threads: 4
+      connect_timeout: 15
